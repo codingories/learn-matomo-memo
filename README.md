@@ -333,6 +333,296 @@ _paq.push(['trackAllContentImpressions']);
 ```
 如果您多次调用此方法，则不会两次发送相同内容块的印象，除非同时调用trackPageView（）。这对于单页应用程序很有用。
 
+### 仅跟踪页面内可见的内容印象。
+启用仅通过`trackVisibleContentImpressions（checkOnScroll，timeIntervalInMs）`跟踪可见内容的印象。 “可见”是指内容块已位于视口中并且未被隐藏（opacity, visibility, display, ...）。
+  - （可选）您可以通过传递checkOnScroll = false告诉我们在每次滚动后不要重新扫描DOM。否则，我们将检查之前隐藏的内容块是否在滚动之后同时可见，如果是，则跟踪印象。
+    - 限制：如果将内容块放置在可滚动元素内（溢出：滚动），则我们目前无法检测到该元素何时可见。
+  - （可选）您可以告诉我们通过传递timeIntervalInMs = 500每隔X毫秒重新扫描整个DOM，以获得新的内容展示。默认情况下，我们将每750毫秒重新扫描一次DOM。要禁用它，请传递timeIntervalInMs = 0。
+    - 重新扫描整个DOM并检测内容块的可见状态可能需要一段时间，具体取决于浏览器，硬件和内容量。万一每秒的帧数下降，您可能需要增加间隔或完全禁用间隔。如果禁用它，您仍然可以随时通过再次调用此方法或trackContentImpressionsWithinNode（）手动重新扫描DOM。
+首次调用此方法后，不能同时更改checkOnScroll和timeIntervalInMs。
+```javascript
+_paq.push(['trackPageView']);
+_paq.push(['trackVisibleContentImpressions', true, 750]);
+```
+### 仅跟踪页面一部分的内容展示
+如果在我们跟踪初始印象后要向DOM中添加元素，请使用trackContentImpressionsWithinNode（domNode，contentTarget）方法。调用此方法将确保跟踪此节点中包含的所有内容块的印象。
+例子:
+```javascript
+var div = $('<div>...<div data-track-content>...</div>...<div data-track-content>...</div></div>');
+$('#id').append(div);
+
+_paq.push(['trackContentImpressionsWithinNode', div[0]]);
+```
+在此示例中，我们将检测到两个新的内容印象。如果您仅启用了跟踪可见的内容块，我们将考虑到这一点。
+### 半自动跟踪互动
+通常，一旦访问者单击内容块，就会自动跟踪与内容块的交互。有时，例如，如果您想基于表单提交或双击来触发交互，则可能需要手动触发交互。为此，调用方法trackContentInteractionNode（domNode，contentInteraction）。
+例:
+```javascript
+formElement.addEventListener('submit', function () {
+    _paq.push(['trackContentInteractionNode', this, 'submittedForm']);
+});
+```
+  - 传递的`domNode`可以是内容块内的任何节点，也可以是内容块元素本身。万一找不到内容块，将不会追踪任何内容。
+  - （可选）您可以设置内容交互的名称，例如单击或提交。如果未提供任何值，则将使用值Unknown。
+  - 您应该通过设置CSS类piwikContentIgnoreInteraction或属性data-content-ignoreinteraction来禁用对该内容块的自动交互跟踪。否则，一旦访问者单击，就可能在其顶部跟踪交互。
+当您手动触发交互时，我们将这种跟踪称为半自动跟踪，但是会自动检测到内容名称，片段和目标。自动检测内容名称和内容可确保我们可以将互动与以前跟踪的印象进行映射。
+
+### 手动跟踪内容展示和互动
+您仅应一起使用方法trackContentImpression（contentName，contentPiece，contentTarget）和trackContentInteraction（contentInteraction，contentName，contentPiece，contentTarget）。不建议您在自动跟踪印象之后使用trackContentInteraction（），因为只有在您设置与跟踪相关印象相同的内容名称和内容时，我们才能将交互映射到印象。
+例:
+```javascript
+_paq.push(['trackContentImpression', 'Content Name', 'Content Piece', 'https://www.example.com']);
+
+div.addEventListener('click', function () {
+    _paq.push(['trackContentInteraction', 'tabActivated', 'Content Name', 'Content Piece', 'https://www.example.com']);
+});
+```
+请注意，对这些方法的每次调用都会向您的Matomo跟踪器实例发送一个请求。重复执行多次可能会导致性能问题。
+## 检测域名和/或子域名
+无论您要跟踪一个域，一个子域，还是同时跟踪两者，等等，都可能需要配置Matomo JavaScript跟踪代码。可能需要配置两件事：1）如何创建和共享跟踪cookie，以及2）应该将哪些点击作为"外部链接"进行跟踪。
+
+### 跟踪一个域名
+这是标准用例。 Matomo可以在一个Matomo网站中跟踪一个没有子域的域名的访问。
+```javascript
+// Default Tracking code
+_paq.push(['setSiteId', 1]);
+_paq.push(['setTrackerUrl', u+'matomo.php']);
+_paq.push(['trackPageView']);
+```
+如果您要跟踪一个特定的子域，则此默认跟踪代码也可以使用。
+### 在同一网站中跟踪一个域及其子域
+要记录主域名及其子域中的所有用户，我们告诉Matomo在所有子域中共享cookie。在example.com/*和所有子域的Matomo跟踪代码中调用setCookieDomain（）。
+```javascript
+_paq.push(['setSiteId', 1]);
+_paq.push(['setTrackerUrl', u+'matomo.php']);
+
+// Share the tracking cookie across example.com, www.example.com, subdomain.example.com, ...
+// 在example.com，www.example.com，subdomain.example.com，...之间共享跟踪Cookie
+_paq.push(['setCookieDomain', '*.example.com']);
+
+// Tell Matomo the website domain so that clicks on these domains are not tracked as 'Outlinks'
+//告诉Matomo网站域，这样就不会将这些域的点击跟踪为"链接"
+_paq.push(['setDomains', '*.example.com']);
+
+_paq.push(['trackPageView']);
+```
+### 在同一个网站中跨多个域名跟踪访客
+为了准确地将跨不同域名的访问者跟踪到一个Matomo网站中的单次访问中，我们需要设置所谓的跨域链接。 Matomo中的跨域跟踪可确保当访问者访问多个网站和域名时，访问者数据将存储在同一访问中，并且访问者ID可在各个域名之间重复使用。例如，当电子商务在线商店位于www.awesome-shop.com上，而电子商务购物车技术位于另一个域（如secure.cart.com）上时，则需要跨域的典型用例
+跨域链接结合使用了两种跟踪器方法setDomains和enableCrossDomainLinking。在我们的指南中了解如何设置跨域链接：[如何跨多个域名准确衡量同一个访问者（跨域链接）？](https://matomo.org/faq/how-to/faq_23654/)
+
+### 在单独的网站中跟踪域的子目录
+在各自独立的Matomo网站中跟踪域的子目录时，建议自定义跟踪代码，以确保最佳的数据准确性和性能。
+例如，如果您的网站提供"用户个人资料"功能，则您可能希望在Matomo的单独网站中跟踪每个用户个人资料页面。在主域主页中，您将使用默认跟踪代码：
+```javascript
+// idSite = X for the Homepage
+// idSite = X作为主页
+// In Administration > Websites for idSite=X, the URL is set to `example.com/`
+//在管理> idSite = X的网站中，URL设置为`example.com/
+_paq.push(['setSiteId', X]);
+_paq.push(['setTrackerUrl', u+'matomo.php']);
+_paq.push(['trackPageView']);
+```
+在`example.com/user/MyUsername`页面（以及所有其他用户配置文件）中，您将构造对自定义`setSiteId`，`setCookiePath`和`setDomains`的调用：
+```javascript
+// The idSite Y will be different from other user pages
+// idSite Y将与其他用户页面不同
+// In Administration > Websites for idSite=Y, the URL is set to `example.com/user/MyUsername`
+// 在管理> idSite = Y的网站中，URL设置为`example.com / user / MyUsername`。
+_paq.push(['setSiteId', Y]);
+
+// Create the tracking cookie specifically in `example.com/user/MyUsername`
+//在`example.com / user / MyUsername`中专门创建跟踪cookie
+_paq.push(['setCookiePath', '/user/MyUsername']);
+
+// Tell Matomo the website domain so that clicks on other pages (eg. /user/AnotherUsername) will be tracked as 'Outlinks'
+//告诉Matomo网站域名，以便将其他页面（例如/ user / AnotherUsername）上的点击记录为"外部链接"
+_paq.push(['setDomains', 'example.com/user/MyUsername']);
+
+_paq.push(['setTrackerUrl', u+'matomo.php']);
+_paq.push(['trackPageView']);
+```
+在单独的网站中跟踪许多子目录时，函数`setCookiePath`阻止cookie的数量快速增加，并阻止浏览器删除某些cookie。这样可以确保最佳的数据准确性并提高用户的性能（每次请求发送的Cookie减少）。
+functionsetDomains确保将离开您网站（子目录example.com/user/MyUsername）的用户的点击正确跟踪为"外接"。
+### 在单独的网站中跟踪一组页面
+（自Matomo 2.16.1开始可用）
+在极少数情况下，您可能希望跟踪特定网站中与通配符匹配的所有页面，并将其他页面（不匹配通配符）上的点击跟踪为"外部链接"。
+在/index_fr.htm或/index_en.htm页面中，输入：
+```javascript
+// clicks on links not starting with example.com/index will be tracked as 'Outlinks'
+//点击不是以example.com/index开头的链接的情况将被跟踪为“外部链接”
+_paq.push(['setDomains', 'example.com/index*']);
+// when using a wildcard *, we do not need to configure cookies with `setCookieDomain`
+//使用通配符*时，我们不需要使用`setCookieDomain`配置cookie
+// or `setCookiePath` as cookies are correctly created in the main domain by default
+//或`setCookiePath`，因为默认情况下会在主域中正确创建cookie
+_paq.push(['setTrackerUrl', u+'matomo.php']);
+_paq.push(['trackPageView']);
+```
+笔记:
+  - 仅在字符串末尾指定通配符*时才受支持。
+  - 由于通配符可以匹配多个路径，因此将省略对setCookieDomain或setCookiePath的调用，以确保为与通配符匹配的所有页面正确共享跟踪cookie。
+有关在Matomo中跟踪网站和子域的更多信息，请参阅FAQ：[如何配置Matomo来监视多个网站，域和子域](https://matomo.org/faq/new-to-piwik/#faq_104)
+## 下载和出站跟踪
+### 启用下载和出站跟踪
+默认的Matomo JavaScript跟踪器代码会自动启用下载和出站跟踪，方法是调用enableLinkTracking函数来完成：
+```javascript
+// Enable Download & Outlink tracking
+// 启用下载和链接跟踪
+_paq.push(['enableLinkTracking']);
+```
+建议在第一次调用trackPageView或trackEvent之后添加此行。
+
+### 自动跟踪外链
+默认情况下，除当前域外，所有指向其他域的链接都启用了点击跟踪，每次点击都将被计为出站链接。如果您使用多个域和子域，则可能会在页面>出站报告中看到对子域的点击。
+### 跟踪出站并忽略别名域
+如果只希望对外部网站的点击显示在“出站报告”中，则可以使用setDomains（）函数指定别名域或子域的列表。支持通配符域（* .example.org），可让您轻松忽略对所有子域的点击。
+```javascript
+// Don't track Outlinks on all clicks pointing to *.hostname1.com or *.hostname2.com
+// 不要在指向* .hostname1.com / product1 / *或* .hostname2.com / product1 / *的所有点击上跟踪出站链接
+// Note: the currently tracked website is added to this array automatically
+// 注意：当前跟踪的网站会自动添加到此数组中
+_paq(['setDomains', ["*.hostname1.com", "hostname2.com"]]);
+_paq.push(['trackPageView']);
+```
+从Matomo 2.15.1开始，您还可以将路径附加到域，并且Matomo将正确地检测到相同域但链接与出站路径不同的链接。
+```javascript
+// Don't track Outlinks on all clicks pointing to *.hostname1.com/product1/* or *.hostname2.com/product1/*
+// 不要在指向* .hostname1.com / product1 / *或* .hostname2.com / product1 / *的所有点击上跟踪出站链接
+// Track all clicks not pointing to *.hostname1.com/product1/* or *.hostname2.com/product1/* as outlink.
+// 跟踪所有未指向* .hostname1.com / product1 / *或* .hostname2.com / product1 / *作为链接的点击。
+_paq(['setDomains', ["*.hostname1.com/product1", "hostname2.com/product1"]]);
+```
+了解有关此用例的更多信息在单独的网站中跟[踪域的子目录](https://developer.matomo.org/guides/tracking-javascript-guide#tracking-subdirectories-of-a-domain-in-separate-websites)。
+
+### 通过CSS或JavaScript将点击作为链接进行跟踪
+如果要强制Matomo将链接视为出站链接（链接到当前域或别名域之一），则可以将'​​piwik_link'css类添加到链接中：
+```javascript
+<a href='https://mysite.com/partner/' class='piwik_link'>Link I want to track as an outlink</a>
+```
+注意：您可以自定义和重命名用于强制将点击记录为链接的CSS类：
+```javascript
+// now all clicks on links with the css class "external" will be counted as outlinks
+// 现在，所有对css类为“外部”的链接的点击都将计为出站链接
+// you can also pass an array of strings
+// 您还可以传递字符串数组
+_paq.push(['setLinkClasses', "external"]);
+
+_paq.push(['trackPageView']);
+```
+或者，您可以使用JavaScript手动触发对链接的单击（对于页面浏览或文件下载，其作用相同）。在此示例中，单击电子邮件地址时将触发自定义出站链接：
+```javascript
+<a href="mailto:namexyz@mydomain.co.uk" target="_blank" onClick="_paq.push(['trackLink', 'https://mydomain.co.uk/mailto/Agent namexyz', 'link']);">namexyz@mydomain.co.uk </a>
+```
+### 跟踪文件下载
+默认情况下，任何以这些扩展名之一结尾的文件在Matomo界面中都将被视为"下载"：
+```javascript
+7z|aac|arc|arj|apk|asf|asx|avi|bin|bz|bz2|csv|deb|dmg|doc|
+exe|flv|gif|gz|gzip|hqx|jar|jpg|jpeg|js|mp2|mp3|mp4|mpg|
+mpeg|mov|movie|msi|msp|odb|odf|odg|odp|ods|odt|ogg|ogv|
+pdf|phps|png|ppt|qt|qtm|ra|ram|rar|rpm|sea|sit|tar|
+tbz|tbz2|tgz|torrent|txt|wav|wma|wmv|wpd||xls|xml|z|zip
+```
+### 自定义跟踪下载的文件类型
+要替换文件下载时要跟踪的扩展名列表，可以使用`setDownloadExtensions（string）`：
+```javascript
+// we now only track clicks on images
+// 现在，我们仅跟踪图片的点击次数
+_paq.push(['setDownloadExtensions', "jpg|png|gif"]);
+
+_paq.push(['trackPageView']);
+```
+如果要跟踪新文件类型，可以使用addDownloadExtensions（filetype）将其添加到列表中：
+```javascript
+// clicks on URLs finishing by mp5 or mp6 will be counted as downloads
+//点击以mp5或mp6结尾的网址将被视为下载
+_paq.push(['addDownloadExtensions', "mp5|mp6"]);
+_paq.push(['trackPageView']);
+```
+如果要忽略特殊的文件类型，可以使用`removeDownloadExtensions（filetype）`将其从列表中删除：
+```javascript
+// clicks on URLs ending in png or mp4 will not be counted as downloads
+_paq.push(['removeDownloadExtensions', "png|mp4"]);
+_paq.push(['trackPageView']);
+```
+### 将点击记录为下载
+如果要强制Matomo将链接视为下载，可以将matomo_download或piwik_download css类添加到链接：
+```javascript
+<a href='last.php' class='matomo_download'>Link I want to track as a download</a>
+```
+注意：您可以自定义并重命名用于强制将点击记录为下载的CSS类：
+```javascript
+// now all clicks on links with the css class "download" will be counted as downloads
+// 现在，所有具有css类“下载”的链接的点击都将计为下载
+// you can also pass an array of strings
+// 您还可以传递字符串数组
+_paq.push(['setDownloadClasses', "download"]);
+
+_paq.push(['trackPageView']);
+```
+另外，您可以使用JavaScript手动触发对下载的点击。在此示例中，单击链接会触发自定义下载：
+```javascript
+<a href="https://secure.example.com/this-is-a-file-url" target="_blank" onClick="_paq.push(['trackLink', 'https://mydomain.co.uk/mailto/Agent namexyz', 'download']);">Download</a>
+```
+### 更改暂停计时器
+当用户单击下载文件或单击出站链接时，Matomo会记录该文件。为此，在用户重定向到所请求的文件或链接之前，它会增加一小段延迟。默认值为500ms，但是您可以将其设置为较短的时间长度。但是，应注意的是，这样做会导致以下风险：该时间段不足以将数据记录在Matomo中。
+```javascript
+_paq.push(['setLinkTrackingTimer', 250]); 
+// 250 milliseconds
+// 毫秒
+_paq.push(['trackPageView']);
+```
+### 禁用下载和链接跟踪
+默认情况下，Matomo跟踪代码启用点击和下载跟踪。要禁用所有自动下载和出站跟踪，必须删除对enableLinkTracking（）函数的调用：
+```javascript
+_paq.push(['trackPageView']);
+
+// we comment out the function that enables link tracking
+// 我们注释掉了启用链接跟踪的功能
+// _paq.push(['enableLinkTracking']);
+```
+### 禁用特定的CSS类
+您可以对具有特定CSS类的链接禁用自动下载和出站跟踪：
+```javascript
+// you can also pass an array of strings
+// 您还可以传递字符串数组
+_paq.push(['setIgnoreClasses', "no-tracking"]);
+_paq.push(['trackPageView']);
+```
+这将导致不计算链接`<a href='https://example.com' class='no-tracking'>测试</a>`上的点击。
+### 禁用特定链接
+如果要忽略特定链接上的下载或外链跟踪，可以向其添加`matomo_ignore`或`piwik_ignore`css类：
+```html
+<a href='https://builds.matomo.org/latest.zip' class='matomo_ignore'>File I don't want to track as a download</a>
+```
+## 征求同意
+[查看我们的集成指南以实施跟踪或Cookie同意。](https://developer.matomo.org/guides/tracking-consent)
+### 可选：创建自定义退出表单
+## 多个Matomo追踪器
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
