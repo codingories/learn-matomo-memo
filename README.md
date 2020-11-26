@@ -597,7 +597,157 @@ _paq.push(['trackPageView']);
 ## 征求同意
 [查看我们的集成指南以实施跟踪或Cookie同意。](https://developer.matomo.org/guides/tracking-consent)
 ### 可选：创建自定义退出表单
+如果您想为您的用户提供完全退出跟踪的功能，则可以使用退出表单。 Matomo随附了使用第三方Cookie的退出表单实现（您可以在Matomo中的“ Matomo”>“管理”>“隐私”页面上对其进行配置）。
+嵌入此表单很简单，因为它只需要您向网站添加iframe，但并不总是理想的。一些用户阻止了第三方Cookie，因此退出表单对他们不起作用。您可能还希望以“退出”表单显示自定义文本或图形，或者可能希望允许用户单独而不是完全退出站点。
+在这种情况下，您可能需要考虑创建自定义退出表单。创建HTML / JS表单的细节超出了本文档的范围，但是每个自定义退出表单都需要做一些事情：检查用户当前是否退出，用户并退出用户。这是如何做这些事情：
+检查用户当前是否选择退出
+使用isUserOptedOut（）方法，如下所示：
+_paq.push([function () {
+  if (this.isUserOptedOut()) {
+    // ... change form to say user is currently opted out ...
+    // ...更改表格以说用户当前已退出...
+  } else {
+    // ... change form to say user is currently opted in ...
+    // ...更改表格以说用户当前选择了...
+  }
+}])
+选择退出用户
+使用optUserOut（）方法：
+_paq.push(['optUserOut']);
+选择一个用户
+使用forgetUserOptOut（）方法：
+```
+_paq.push(['forgetUserOptOut']);
+```
+下面是一个示例退出表单，该表单复制了内置的Matomo退出表单：
+
+```
+<div id="optout-form">
+  <p>You may choose not to have a unique web analytics cookie identification number assigned to your computer to avoid the aggregation and analysis of data collected on this website.</p>
+  <p>您可以选择不为计算机分配唯一的网络分析cookie标识号，以避免对本网站收集的数据进行汇总和分析。
+  <p>To make that choice, please click below to receive an opt-out cookie.</p>
+  <p>要做出选择，请单击下面的按钮，以接收退出cookie。</ p>
+  <p>
+    <input type="checkbox" id="optout" />
+    <label for="optout"><strong></strong></label>
+  </p>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", function(event) {
+  function setOptOutText(element) {
+    _paq.push([function() {
+      element.checked = !this.isUserOptedOut();
+      document.querySelector('label[for=optout] strong').innerText = this.isUserOptedOut()
+        ? 'You are currently opted out. Click here to opt in.'
+        : 'You are currently opted in. Click here to opt out.';
+    }]);
+  }
+
+  var optOut = document.getElementById("optout");
+  optOut.addEventListener("click", function() {
+    if (this.checked) {
+      _paq.push(['forgetUserOptOut']);
+    } else {
+      _paq.push(['optUserOut']);
+    }
+    setOptOutText(optOut);
+  });
+  setOptOutText(optOut);
+});
+</script>
+
+```
 ## 多个Matomo追踪器
+默认情况下，Matomo JavaScript跟踪代码将您的分析数据收集到一台Matomo服务器中。 Matomo服务网址是在您的JavaScript跟踪代码中指定的（例如：var u =“ // matomo.example.org”;）。在某些情况下，您可能希望将分析数据跟踪到多个Matomo服务器或同一Matomo服务器上的多个网站中。
+如果尚未升级到Matomo 2.16.2或更高版本，请立即升级！ （以下是2.16.1或更早版本的说明。）
+### 将您的数据复制到一台Matomo服务器中的不同网站中
+您可能需要将Web分析数据的副本收集到相同的Matomo服务器中，但是在另一个网站中。
+### 推荐的解决方案：使用汇总报告插件
+当您需要将数据复制到另一个网站，或将多个网站合并为一个或多个组（称为汇总）时，建议的解决方案是使用[汇总报告高级插件](https://plugins.matomo.org/RollUpReporting)。与其他解决方案相比，使用此插件具有多个优点，因为您可以轻松地将一个或多个网站组合在一起，并且汇总不会导致重复跟踪数据，从而提高了整体性能。
+### 替代解决方案：复制跟踪数据
+除了使用汇总报告插件外，您还可以复制跟踪数据。要复制数据，您可以调用带有Matomo URL的addTracker以及您在其中复制数据的网站ID：
+```javascript
+var u="//matomo.example.org/";
+  _paq.push(['setTrackerUrl', u+'matomo.php']);
+  _paq.push(['setSiteId', '1']);
+
+  // We will also collect the website data into Website ID = 7
+  //我们还将网站数据收集到网站ID = 7中
+  var websiteIdDuplicate = 7;
+  // The data will be duplicated into `piwik.example.org/matomo.php`
+  //数据将被复制到`piwik.example.org / matomo.php`中
+  _paq.push(['addTracker', u+'matomo.php', websiteIdDuplicate]);
+  // Your data is now tracked in both website ID 1 and website 7 into your piwik.example.org server!
+  //现在，您在网站ID 1和网站7中都可以跟踪您的数据到piwik.example.org服务器中！
+```
+由于此解决方案会导致在Matomo服务器中对每个访问者的事件，综合浏览量等进行两次跟踪，因此通常不建议这样做。
+### 将您的分析数据收集到两个或更多Matomo服务器中
+下面的示例显示了如何使用addTracker方法将相同的分析数据跟踪到第二个Matomo服务器中。 Matomo主服务器是piwik.example.org/matomo.php，其中数据存储在网站ID 1中。第二个Matomo服务器是analytics.example.com/matomo.php，其中数据存储在网站ID 77中。在您的网站中实施此操作，请用您自己的Matomo URL和网站ID替换这两个Matomo URL和Matomo网站ID。
+```javascript
+<script type="text/javascript">
+  var _paq = window._paq = window._paq || [];
+  _paq.push(['trackPageView']);
+  _paq.push(['enableLinkTracking']);
+
+  (function() {
+    var u="//matomo.example.org/";
+    _paq.push(['setTrackerUrl', u+'matomo.php']);
+    _paq.push(['setSiteId', '1']);
+
+    // Add this code below within the Matomo JavaScript tracker code
+    //将此代码添加到Matomo JavaScript跟踪器代码的下面
+    // Important: the tracker url includes the /matomo.php
+    // 重要提示：跟踪器网址包含/matomo.php
+    var secondaryTrackerUrl = 'https://analytics.example.com/matomo.php';
+    var secondaryWebsiteId = 77;
+    // Also send all of the tracking data to this other Matomo server, in website ID 77
+    // 还将所有跟踪数据发送到网站ID为77的另一个Matomo服务器
+    _paq.push(['addTracker', secondaryTrackerUrl, secondaryWebsiteId]);
+    // That's it!
+
+    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+    g.type='text/javascript'; g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+  })();
+</script>
+
+```
+### 自定义其中一个跟踪器对象实例
+注意：默认情况下，通过addTracker添加的任何跟踪器的配置都与主要的默认跟踪器对象相同（关于cookie，自定义维度，用户ID，下载和链接跟踪，域和子域等）。如果要配置通过addTracker添加的Matomo跟踪器对象实例之一，则可以调用Matomo.getAsyncTracker（optionalMatomoUrl，optionalPiwikSiteId）方法。此方法返回的跟踪器实例对象可以与主要的JavaScript跟踪器对象实例进行不同的配置。
+### 直接调用JavaScript API（而不是通过_paq.push）时复制跟踪数据
+可以将分析数据跟踪到同一服务器上的其他网站ID中，也可以将数据的副本记录到另一台Matomo服务器中。每次调用Piwik.getTracker（）都会返回一个可以配置的唯一Matomo Tracker对象（实例）。
+```javascript
+<script type="text/javascript">
+    window.matomoAsyncInit = function () {
+        try {
+            var matomoTracker = Matomo.getTracker("https://URL_1/matomo.php", 1);
+            matomoTracker.trackPageView();
+            var piwik2 = Matomo.getTracker("https://URL_2/matomo.php", 4);
+            piwik2.trackPageView();
+        } catch( err ) {}
+    };
+</script>
+```
+一旦加载并初始化Matomo跟踪器，就会执行matomoAsyncInit（）方法。在早期版本中，您必须加载Matomo sync。
+### JavaScript Tracker参考
+在[JavaScript Tracker](https://developer.matomo.org/guides/tracking-javascript)参考中查看Tracking客户端的所有功能。
+### 常问问题
+如果您对Matomo中的JavaScript跟踪有任何疑问，请[搜索网站](https://matomo.org/)或在[论坛](https://forum.matomo.org/)中提问。
+- [如何为没有JavaScript的用户启用跟踪？](https://matomo.org/faq/how-to/faq_176/)
+- [Matomo如何跟踪下载？](https://matomo.org/faq/new-to-piwik/faq_47/)
+- [如何跟踪单页网站和Web应用程序](https://developer.matomo.org/guides/spa-tracking)
+- [如何跟踪错误页面并获取404和引荐来源网址列表。](https://matomo.org/faq/how-to/faq_60/)
+- [如何设置自定义页面组（结构），以便按类别汇总页面视图？](https://matomo.org/faq/how-to/faq_62/)
+- [如何设置Matomo以跟踪多个网站，而又不透露JS中的Matomo服务器URL足迹？](https://matomo.org/faq/how-to/faq_132/)
+- [如何自定义在所有网站上加载的matomo.js？](https://matomo.org/faq/how-to/faq_19087/)
+- [如何在JavaScript代码中禁用Matomo使用的所有跟踪Cookie？](https://matomo.org/faq/how-to/faq_19087/)
+
+
+
+
+
+
+
+
 
 
 
